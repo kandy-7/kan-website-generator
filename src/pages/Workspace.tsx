@@ -1,9 +1,8 @@
 import { useState } from "react";
 import ChatPanel from "@/components/ChatPanel";
 import OutputPanel from "@/components/OutputPanel";
-import PreviewContent from "@/components/PreviewContent";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Sparkles, Github, Share2, Moon, Sun, Rocket } from "lucide-react";
+import { ArrowLeft, Sparkles, Github, Share2, Moon, Sun, Rocket, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/components/ThemeProvider";
 import {
@@ -18,60 +17,12 @@ interface Message {
   content: string;
 }
 
-type PreviewType = "landing" | "pricing" | "dashboard" | "empty";
-
-const sampleCode = `import React from 'react';
-
-// Modern Landing Page Component
-const LandingPage = () => {
-  return (
-    <div className="min-h-screen bg-white">
-      {/* Navigation */}
-      <header className="px-6 py-4 flex items-center justify-between border-b">
-        <div className="font-bold text-lg">Startup</div>
-        <nav className="flex gap-6 text-sm text-gray-600">
-          <a href="#">Features</a>
-          <a href="#">Pricing</a>
-          <a href="#">About</a>
-        </nav>
-        <button className="px-4 py-2 bg-black text-white rounded-lg text-sm">
-          Get Started
-        </button>
-      </header>
-
-      {/* Hero Section */}
-      <main className="px-6 py-16 text-center">
-        <div className="inline-flex px-3 py-1 rounded-full bg-gray-100 text-sm mb-6">
-          ✨ Now in Beta
-        </div>
-        <h1 className="text-5xl font-bold mb-4">
-          Build Something Amazing Today
-        </h1>
-        <p className="text-lg text-gray-600 max-w-lg mx-auto mb-8">
-          The fastest way to turn your ideas into reality.
-        </p>
-        <div className="flex justify-center gap-4">
-          <button className="px-6 py-3 bg-black text-white rounded-lg">
-            Start Free
-          </button>
-          <button className="px-6 py-3 border rounded-lg">
-            Learn More
-          </button>
-        </div>
-      </main>
-    </div>
-  );
-};
-
-export default LandingPage;`;
-
 const Workspace = () => {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [previewType, setPreviewType] = useState<PreviewType>("empty");
-  const [currentCode, setCurrentCode] = useState(sampleCode);
+  const [currentCode, setCurrentCode] = useState("");
 
   const handleSendMessage = async (content: string) => {
     const userMessage: Message = {
@@ -83,35 +34,45 @@ const Workspace = () => {
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
 
-    // Simulate AI response
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      const res = await fetch("http://localhost:8001/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: content,
+          history: messages
+        }),
+      });
 
-    const lowerContent = content.toLowerCase();
-    let responseText = "";
-    let newPreviewType: PreviewType = previewType;
+      const data = await res.json();
 
-    if (lowerContent.includes("landing") || lowerContent.includes("homepage") || lowerContent.includes("website")) {
-      responseText = "I've generated a modern landing page for you! It includes a clean navigation bar, a compelling hero section with call-to-action buttons, and a features section. You can view the live preview or check out the code.";
-      newPreviewType = "landing";
-    } else if (lowerContent.includes("pricing") || lowerContent.includes("plans")) {
-      responseText = "Here's a clean pricing page with three tiers: Starter, Pro, and Enterprise. Each plan clearly shows its features and pricing. The Pro plan is highlighted as the recommended choice.";
-      newPreviewType = "pricing";
-    } else if (lowerContent.includes("dashboard") || lowerContent.includes("admin") || lowerContent.includes("analytics")) {
-      responseText = "I've created a dashboard layout with a sidebar navigation, key metrics cards, and a chart area. This provides a solid foundation for your admin panel or analytics dashboard.";
-      newPreviewType = "dashboard";
-    } else {
-      responseText = "I understand! Let me help you build that. Could you tell me more about what kind of page you'd like? For example:\n\n• A landing page for your product\n• A pricing page with different plans\n• A dashboard with analytics\n\nJust describe what you need and I'll generate it for you.";
+      const responseText = data.response || data.error || "No response from agent.";
+      const responseCode = data.code || "";
+
+      // Update the code editor if code was returned
+      if (responseCode) {
+        setCurrentCode(responseCode);
+      }
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: responseText,
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: "⚠️ Could not reach the backend. Make sure it is running on http://localhost:8001",
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
     }
-
-    const assistantMessage: Message = {
-      id: (Date.now() + 1).toString(),
-      role: "assistant",
-      content: responseText,
-    };
-
-    setMessages((prev) => [...prev, assistantMessage]);
-    setPreviewType(newPreviewType);
-    setIsLoading(false);
   };
 
   return (
@@ -136,7 +97,7 @@ const Workspace = () => {
             <span className="font-semibold text-sm">buildAI Workspace</span>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" className="gap-2">
             <Share2 className="w-4 h-4" />
@@ -148,6 +109,18 @@ const Workspace = () => {
           </Button>
           <Button variant="outline" size="sm">
             Upgrade
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => {
+              setMessages([]);
+              setCurrentCode("");
+            }}
+          >
+            <Trash2 className="w-4 h-4" />
+            Clear Chat
           </Button>
           <div className="h-6 w-px bg-border" />
           <Button
@@ -180,13 +153,12 @@ const Workspace = () => {
             />
           </div>
         </ResizablePanel>
-        
+
         <ResizableHandle withHandle />
-        
+
         <ResizablePanel defaultSize={70}>
           <div className="h-full animate-slide-in-right">
             <OutputPanel
-              previewContent={<PreviewContent type={previewType} />}
               codeContent={currentCode}
             />
           </div>
